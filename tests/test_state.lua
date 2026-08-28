@@ -1,0 +1,26 @@
+return function(T, V)
+  local State = V.require("core/MountState")
+
+  T:test("state machine accepts the ground lifecycle", function()
+    T:ok(State.canTransition(State.UNMOUNTED, State.MOUNTING))
+    T:ok(State.canTransition(State.MOUNTING, State.GROUND))
+    T:ok(State.canTransition(State.GROUND, State.DISMOUNTING))
+    T:ok(State.canTransition(State.DISMOUNTING, State.UNMOUNTED))
+  end)
+
+  T:test("state machine rejects impossible transitions", function()
+    local ok, err = State.validate(State.UNMOUNTED, State.FLIGHT)
+    T:eq(ok, nil)
+    T:matches(err, "illegal mount transition")
+    T:eq(State.validate("MISSING", State.GROUND), nil)
+  end)
+
+  T:test("mode mapping has one authority", function()
+    T:eq(State.targetForMode("ground"), State.GROUND)
+    T:eq(State.targetForMode("surf"), State.SURF)
+    T:eq(State.targetForMode("flight"), State.TAKEOFF)
+    T:eq(State.modeFor(State.LANDING), "flight")
+    T:ok(State.isStable(State.FLIGHT))
+    T:eq(State.isStable(State.TAKEOFF), false)
+  end)
+end
