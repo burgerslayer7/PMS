@@ -1,0 +1,21 @@
+{
+  "name": "PokéPC Followers numbered walker sheets",
+  "repository": "https://github.com/burgerslayer7/PokePCFollowers",
+  "release": "v0.8.3",
+  "commit": "78c80f61e166e67efd92d929207caa92e896e789",
+  "imported_at": "2026-08-28",
+  "files": {
+    "pattern": "sprites/follower_%03d.png",
+    "first_dex": 1,
+    "last_dex": 251,
+    "count": 251,
+    "width": 16,
+    "height": 96,
+    "frames": 6,
+    "frame_width": 16,
+    "frame_height": 16,
+    "walker": true,
+    "sha256_manifest": "596d00a45517aaaa82441b3837d2354ce8ef08140785f8bb5b235ef08ff4363e"
+  },
+  "notice": "These third-party sprite assets are not relicensed by Pokémon Mount System. See ATTRIBUTION.md."
+}
