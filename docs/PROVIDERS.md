@@ -96,10 +96,15 @@ The current context includes:
   rendererHost = "BATTLE_ART_VOXEL_FORK",
   cameraMode = "diorama" or "first_person" or "third_person",
   preferredRenderer = "auto" or "native2d" or "voxel" or "stadium",
+  spriteSource = "auto" or "builtin" or "wilds",
   dex = 6,
   species = "CHARIZARD",
   mode = "flight",
   altitude = 0.0,
+  visualLift = 0,
+  showRider = true,
+  showShadow = true,
+  mountScale = 1.0,
 }
 ```
 
@@ -121,11 +126,45 @@ resolver and is called at most once per lease.
 ## Built-in integrations
 
 - `builtin_pokepc_2d`: guaranteed assets for dex 001–251.
+- `wilds_selected_2d`: Wilds of Kanto's public selected follower sprite,
+  including runtime PokeMMO/PMD/Pokédex style changes.
 - `voxel_mount_billboard`: ordinary PMS actor rendered by an active standard
-  Voxel Companion host.
-- `stadium_models`: public Stadium/Stadium 2 `tag` and `untag` calls.
+  Voxel Companion host or the dedicated PotatoVoxel adapter. The selected
+  Wilds/builtin art is resolved before this renderer split.
+- `stadium_models`: public Gen1 Stadium `tag` and `untag` calls only.
 - `technical_fallback`: last-resort gameplay lease; normally never visible.
 
 Battle Art and Dramaless keep complete camera/world ownership. PMS's companion
 extension has one observer callback in their `background` render phase and
-does not submit draw or camera contributions.
+does not submit draw or camera contributions. It records the active host's
+plain camera yaw when the public frame context provides `camera.eye` and
+`camera.focus`; this is orientation metadata only. Voxel Companion API v1 does
+not expose a public player-movement command, so PMS deliberately does not
+implement camera-relative free movement through engine internals.
+
+PotatoVoxel keeps the same ownership boundary through a different signal: PMS
+reads the engine's active `voxel` pipeline and never imports PotatoVoxel's
+module loader. Altitude and rider seating are ordinary actor-pose data. Builds
+must include PotatoVoxel PR #69 for non-16x16 mount cards.
+
+## Cooperative gameplay API
+
+Presentation and ecosystem mods can query the active lease without receiving
+PMS's mutable session:
+
+```lua
+local pms = mod.find("pokemon_mount_system")
+local mount = pms and pms.exports.currentMount()
+-- nil while unmounted, otherwise:
+-- { dex, species, mode, altitude, state }
+```
+
+PMS also emits `mod.pokemon_mount_system.takeoff` when Flight becomes active
+and `mod.pokemon_mount_system.landed` when Flight ends. The event payload is a
+read-only snapshot of the mount state.
+
+Wild Skies keeps authority over airborne entities. PMS calls only its public
+`takeFlyer(x, y, radius)` export, then queues the exact returned species and
+level through the common world battle script. Followers EX and Wilds can
+recover their trails through their public `syncTrailers` export when PMS
+releases temporary render ownership.

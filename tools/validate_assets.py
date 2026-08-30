@@ -8,6 +8,7 @@ import json
 import pathlib
 import re
 import sys
+import math
 
 from PIL import Image, UnidentifiedImageError
 
@@ -22,6 +23,49 @@ def fail(message: str) -> None:
 def mount_dexes(path: pathlib.Path) -> list[int]:
     text = path.read_text(encoding="utf-8")
     return sorted({int(value) for value in re.findall(r"\bdex\s*=\s*(\d+)", text)})
+
+
+def mount_heights(path: pathlib.Path) -> dict[int, float]:
+    text = path.read_text(encoding="utf-8")
+    return {
+        int(dex): float(height)
+        for dex, height in re.findall(
+            r"\bdex\s*=\s*(\d+).*?\bheightM\s*=\s*([0-9]+(?:\.[0-9]+)?)"
+            r".*?\bmodes\s*=",
+            text,
+            flags=re.DOTALL,
+        )
+    }
+
+
+def scale_constants(path: pathlib.Path) -> dict[str, float]:
+    text = path.read_text(encoding="utf-8")
+    values: dict[str, float] = {}
+    for name in (
+        "BASE_HEIGHT_M",
+        "BASE_FRAME_PX",
+        "MIN_FRAME_PX",
+        "MAX_FRAME_PX",
+    ):
+        match = re.search(
+            rf"\blocal\s+{name}\s*=\s*([0-9]+(?:\.[0-9]+)?)", text
+        )
+        if not match:
+            fail(f"missing runtime mount-scale constant {name}")
+        values[name] = float(match.group(1))
+    return values
+
+
+def frame_size(height_m: float, constants: dict[str, float]) -> int:
+    pixels = math.floor(
+        constants["BASE_FRAME_PX"]
+        * math.sqrt(max(0.1, height_m) / constants["BASE_HEIGHT_M"])
+        + 0.5
+    )
+    return max(
+        int(constants["MIN_FRAME_PX"]),
+        min(int(constants["MAX_FRAME_PX"]), pixels),
+    )
 
 
 def pixel_data(path: pathlib.Path) -> bytes:
@@ -64,9 +108,14 @@ def main() -> None:
     if aggregate != expected_hash or aggregate != EXPECTED_MANIFEST_HASH:
         fail(f"source aggregate checksum changed: {aggregate}")
 
-    dexes = mount_dexes(root / "config" / "mounts.lua")
+    mount_config = root / "config" / "mounts.lua"
+    dexes = mount_dexes(mount_config)
+    heights = mount_heights(mount_config)
+    constants = scale_constants(root / "src" / "rendering" / "MountScale.lua")
     if len(dexes) != 40:
         fail(f"expected 40 unique mount species, got {len(dexes)}")
+    if sorted(heights) != dexes:
+        fail("every mount must declare one Pokédex heightM")
     for scale in (2, 3, 4):
         for dex in dexes:
             name = f"follower_{dex:03d}.png"
@@ -83,7 +132,26 @@ def main() -> None:
                 if image.convert("RGBA").tobytes() != expected.tobytes():
                     fail(f"scaled pixels differ from nearest-neighbour source: {name} {scale}x")
 
-    print(f"assets ok: 251 source sheets, {len(dexes) * 3} scaled mount sheets")
+    for dex in dexes:
+        name = f"follower_{dex:03d}.png"
+        size = frame_size(heights[dex], constants)
+        original = sprite_dir / name
+        generated = base / "sized" / name
+        if not generated.is_file():
+            fail(f"missing Pokédex-sized sheet {generated.relative_to(root)}")
+        with Image.open(generated) as image:
+            if image.size != (size, size * 6):
+                fail(f"wrong Pokédex-sized dimensions for {name}: {image.size}")
+            expected = Image.open(original).convert("RGBA").resize(
+                image.size, Image.Resampling.NEAREST
+            )
+            if pixel_data(generated) != expected.tobytes():
+                fail(f"Pokédex-sized pixels differ from source: {name}")
+
+    print(
+        f"assets ok: 251 source sheets, {len(dexes) * 3} legacy scaled "
+        f"and {len(dexes)} Pokédex-sized mount sheets"
+    )
 
 
 if __name__ == "__main__":

@@ -32,7 +32,8 @@ function ProgressionPolicy:monFor(mount, opts)
 end
 
 function ProgressionPolicy:canMount(mount, mode, opts)
-  if mode ~= "surf" and self.adapter:isSurfing() then
+  opts = opts or {}
+  if mode ~= "surf" and self.adapter:isSurfing() and not opts.transition then
     return nil, "Leave the water before changing mount mode."
   end
   if mode == "flight" and not self.adapter:isOutside() then
@@ -49,7 +50,7 @@ function ProgressionPolicy:canMount(mount, mode, opts)
   if badge and not self.adapter:hasBadge(badge) then
     return nil, "The required badge has not been earned yet."
   end
-  if mode == "surf" and not self.adapter:isSurfing() then
+  if mode == "surf" and not self.adapter:isSurfing() and not opts.transition then
     local action = self.adapter:fieldAction("surf")
     if not action then return nil, "Face a water tile to start Surf." end
   end

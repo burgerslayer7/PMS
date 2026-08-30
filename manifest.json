@@ -1,7 +1,7 @@
 {
   "id": "pokemon_mount_system",
   "name": "Pokémon Mount System",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.2",
   "entry": "main.lua",
   "api": 2,
   "games": [
@@ -15,8 +15,8 @@
     "BATTLE_ART_VOXEL_FORK",
     "DRAMALESS_SHAPE",
     "DRAMATIC_SHAPE",
+    "potato_voxel",
     "STADIUM_OVERWORLD_MODELS",
-    "STADIUM2_OVERWORLD_MODELS",
     "wild_skies",
     "overworld_wild_spawns",
     "FOLLOWERS_EX",

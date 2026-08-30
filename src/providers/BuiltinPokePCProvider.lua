@@ -12,11 +12,16 @@ function BuiltinPokePCProvider.new(opts)
     bridge = opts.bridge,
     log = opts.log,
     spriteIds = {},
+    spriteDefs = {},
   }, BuiltinPokePCProvider)
 end
 
 function BuiltinPokePCProvider:spriteId(dex, mode)
   return string.format("PMS_MOUNT_%03d_%s", dex, string.upper(mode))
+end
+
+function BuiltinPokePCProvider:definition(dex, mode)
+  return self.spriteDefs[dex .. ":" .. mode]
 end
 
 function BuiltinPokePCProvider:registerContent()
@@ -30,8 +35,7 @@ function BuiltinPokePCProvider:registerContent()
         local pose = self.poses:resolve(mount.dex, mode, "down")
         local id = self:spriteId(mount.dex, mode)
         local relative = string.format(
-          "assets/fallback/pokepc/scaled/%dx/follower_%03d.png",
-          pose.scale, mount.dex)
+          "assets/fallback/pokepc/sized/follower_%03d.png", mount.dex)
         local def = {
           id = id,
           image = self.mod.assets:path(relative),
@@ -47,6 +51,7 @@ function BuiltinPokePCProvider:registerContent()
         if gen2 then def.spriteType = "WALKING_SPRITE" end
         sprites:register(id, def)
         self.spriteIds[mount.dex .. ":" .. mode] = id
+        self.spriteDefs[mount.dex .. ":" .. mode] = def
       end
     end
   end
@@ -84,6 +89,12 @@ function BuiltinPokePCProvider:contract()
         mode = mode,
         spriteId = spriteId,
         pose = owner.poses:resolve(dex, mode, "down"),
+        poses = {
+          up = owner.poses:resolve(dex, mode, "up"),
+          down = owner.poses:resolve(dex, mode, "down"),
+          left = owner.poses:resolve(dex, mode, "left"),
+          right = owner.poses:resolve(dex, mode, "right"),
+        },
       }
     end,
     begin = function(_, resolved, context)

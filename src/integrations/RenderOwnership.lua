@@ -39,14 +39,22 @@ local function contains(list, wanted)
   return false
 end
 
-function RenderOwnership.new(log)
-  return setmetatable({ log = log }, RenderOwnership)
+local function find(mod, id)
+  if not (mod and type(mod.find) == "function") then return nil end
+  local ok, value = pcall(mod.find, id)
+  if not ok then ok, value = pcall(mod.find, mod, id) end
+  return ok and value or nil
+end
+
+function RenderOwnership.new(log, mod)
+  return setmetatable({ log = log, mod = mod }, RenderOwnership)
 end
 
 function RenderOwnership:acquire(session, runtime)
   local lease = {
     species = session and session.species,
     hidden = setmetatable({}, { __mode = "k" }),
+    runtime = runtime,
   }
   self:update(lease, session, runtime)
   return lease
@@ -83,6 +91,33 @@ function RenderOwnership:release(lease)
     end
   end
   lease.hidden = {}
+  -- Prefer Followers EX when it owns the follower engine, then Wilds. Both
+  -- expose the same public syncTrailers seam. This refreshes provider-owned
+  -- draw lists after PMS returns authority without changing saved pack size,
+  -- leader selection or control mode.
+  local provider
+  for _, id in ipairs({ "FOLLOWERS_EX", "overworld_wild_spawns" }) do
+    local handle = find(self.mod, id)
+    local sync = handle and handle.exports and handle.exports.syncTrailers
+    if type(sync) == "function" then
+      provider = { id = id, sync = sync }
+      break
+    end
+  end
+  local runtime = lease.runtime
+  local world = liveWorld(runtime)
+  local game = runtime and runtime.game
+  if provider and world and game then
+    local ok, err = pcall(provider.sync, game, world,
+      { catchUp = true, pmsOwnershipRelease = true })
+    if not ok and self.log then
+      self.log:warn("Ownership", "%s follower resync failed: %s",
+        provider.id, tostring(err))
+    elseif ok and self.log then
+      self.log:once("ownership-sync-" .. provider.id, "info", "Ownership",
+        "restored follower authority through %s public API", provider.id)
+    end
+  end
   return true
 end
 

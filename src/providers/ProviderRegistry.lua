@@ -103,6 +103,7 @@ local function probeKey(provider, context)
     provider.id,
     tostring(context and context.generation or "?"),
     tostring(context and context.activeRenderer or "native2d"),
+    tostring(context and context.spriteSource or "auto"),
   }, "|")
 end
 
@@ -144,12 +145,17 @@ end
 function ProviderRegistry:invalidate(id)
   if id == nil then
     self.probeCache = {}
+    -- Explicit invalidation means the environment changed (map, renderer or
+    -- hot-reload). A provider quarantined by transient actor/map failures must
+    -- be allowed to prove itself healthy again.
+    for providerId in pairs(self.byId) do self.failures[providerId] = 0 end
     return
   end
   local prefix = id .. "|"
   for key in pairs(self.probeCache) do
     if string.sub(key, 1, #prefix) == prefix then self.probeCache[key] = nil end
   end
+  if self.byId[id] then self.failures[id] = 0 end
 end
 
 function ProviderRegistry:cleanup()
