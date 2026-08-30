@@ -34,6 +34,20 @@ local function activeBonus(active, receipt)
   return 0
 end
 
+local function spriteSourceBonus(source, active, preferred, receipt)
+  local explicit = preferred and preferred ~= "auto"
+  local native2dLane = preferred == "native2d"
+    or (not explicit and active == "native2d")
+  if not native2dLane then return 0 end
+  if source == "builtin" then
+    if receipt.kind == "builtin2d" then return 1000000 end
+    if receipt.kind == "external2d" then return -1000000 end
+  elseif source == "wilds" and receipt.spriteSource == "wilds" then
+    return 1000000
+  end
+  return 0
+end
+
 function RenderResolver:_rank(context)
   local ranked = {}
   for _, provider in ipairs(self.registry:list()) do
@@ -46,7 +60,10 @@ function RenderResolver:_rank(context)
           + (tonumber(receipt.fit) or 0)
           + (KIND_FIT[receipt.kind] or 0)
           + preferenceBonus(context and context.preferredRenderer, receipt)
-          + activeBonus(context and context.activeRenderer, receipt),
+          + activeBonus(context and context.activeRenderer, receipt)
+          + spriteSourceBonus(context and context.spriteSource,
+            context and context.activeRenderer,
+            context and context.preferredRenderer, receipt),
       }
     end
   end

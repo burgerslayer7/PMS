@@ -1,35 +1,24 @@
--- Native 2D mount geometry. Values are provider data, not collision data.
--- anchorY is the mount sheet's anchor measured from each scaled frame top.
+-- Native 2D presentation only. Frame size and the base rider lift come from
+-- the species' Pokédex height through MountScale, never from hand-picked 2x/
+-- 3x/4x buckets. Profiles here are limited to art-specific anchor tuning.
 
 return {
   defaults = {
-    ground = { scale = 2, anchorY = 20, bob = 1 },
-    surf = { scale = 3, anchorY = 30, bob = 2 },
-    flight = { scale = 3, anchorY = 29, bob = 2 },
+    ground = { anchorRatio = 0.76, bob = 1, clipRider = true },
+    surf = { anchorRatio = 0.74, bob = 1, clipRider = true },
+    -- Flight uses a neutral lift so the cropped rider sits in the centre of
+    -- the airborne silhouette instead of floating above its shoulders.
+    flight = { anchorRatio = 0.74, bob = 1, riderLift = 0,
+      clipRider = true },
   },
   profiles = {
-    ["006:flight"] = { scale = 3, anchorY = 28 },
-    ["009:surf"] = { scale = 3, anchorY = 31 },
-    ["059:ground"] = { scale = 2, anchorY = 19 },
-    ["073:surf"] = { scale = 3, anchorY = 29 },
-    ["115:ground"] = { scale = 3, anchorY = 29 },
-    ["130:surf"] = { scale = 4, anchorY = 39 },
-    ["131:surf"] = { scale = 3, anchorY = 30 },
-    ["142:flight"] = { scale = 3, anchorY = 28 },
-    ["143:ground"] = { scale = 3, anchorY = 29 },
-    ["144:flight"] = { scale = 3, anchorY = 28 },
-    ["145:flight"] = { scale = 3, anchorY = 28 },
-    ["146:flight"] = { scale = 3, anchorY = 28 },
-    ["148:flight"] = { scale = 3, anchorY = 28 },
-    ["149:flight"] = { scale = 3, anchorY = 28 },
-    ["160:surf"] = { scale = 3, anchorY = 30 },
-    ["226:surf"] = { scale = 3, anchorY = 29 },
-    ["230:surf"] = { scale = 3, anchorY = 30 },
-    ["245:ground"] = { scale = 3, anchorY = 29 },
-    ["245:surf"] = { scale = 3, anchorY = 28, bob = 1 },
-    ["248:ground"] = { scale = 3, anchorY = 29 },
-    ["249:surf"] = { scale = 4, anchorY = 39 },
-    ["249:flight"] = { scale = 4, anchorY = 38 },
-    ["250:flight"] = { scale = 4, anchorY = 38 },
+    ["073:surf"] = { anchorRatio = 0.71 },
+    ["130:surf"] = { anchorRatio = 0.72 },
+    ["131:surf"] = { anchorRatio = 0.76 },
+    ["148:flight"] = { anchorRatio = 0.72 },
+    ["245:surf"] = { anchorRatio = 0.72 },
+    ["249:surf"] = { anchorRatio = 0.72 },
+    ["249:flight"] = { anchorRatio = 0.72 },
+    ["250:flight"] = { anchorRatio = 0.72 },
   },
 }

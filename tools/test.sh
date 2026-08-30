@@ -9,6 +9,7 @@ if ! command -v "$lua_bin" >/dev/null 2>&1 && [[ ! -x "$lua_bin" ]]; then
   exit 2
 fi
 
-"$lua_bin" "$project_dir/tests/run.lua" "$project_dir"
 python3 "$project_dir/tools/validate_manifest.py" "$project_dir"
+python3 "$project_dir/tools/validate_scope.py" "$project_dir"
 python3 "$project_dir/tools/validate_assets.py" "$project_dir"
+"$lua_bin" "$project_dir/tests/run.lua" "$project_dir"

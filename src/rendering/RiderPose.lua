@@ -15,11 +15,12 @@ local function merge(base, override)
   return out
 end
 
-function RiderPose.new(config)
+function RiderPose.new(config, scaleResolver)
   assert(type(config) == "table", "rider profile config required")
   return setmetatable({
     defaults = config.defaults or {},
     profiles = config.profiles or {},
+    scaleResolver = scaleResolver,
   }, RiderPose)
 end
 
@@ -39,14 +40,20 @@ function RiderPose:resolve(dex, mode, direction, providerProfiles)
   if directional and directional[direction] then
     result = merge(result, directional[direction])
   end
-  result.scale = math.max(1, math.floor(tonumber(result.scale) or 1))
-  result.frameWidth = 16 * result.scale
-  result.frameHeight = 16 * result.scale
+  local frameSize = self.scaleResolver
+    and self.scaleResolver:frameSize(dex) or tonumber(result.frameSize) or 16
+  result.frameWidth = math.max(16, math.floor(frameSize + 0.5))
+  result.frameHeight = result.frameWidth
+  result.scale = result.frameWidth / 16
   result.anchorX = tonumber(result.anchorX) or result.frameWidth / 2
-  result.anchorY = tonumber(result.anchorY) or result.frameHeight * 0.65
+  result.anchorY = tonumber(result.anchorY)
+    or result.frameHeight * (tonumber(result.anchorRatio) or 0.75)
   result.offsetX = tonumber(result.offsetX) or 0
   result.offsetY = tonumber(result.offsetY) or 0
   result.bob = tonumber(result.bob) or 0
+  result.riderLift = tonumber(result.riderLift)
+    or (self.scaleResolver and self.scaleResolver:riderLift(dex, mode)) or 1
+  result.clipRider = result.clipRider ~= false
   return result
 end
 

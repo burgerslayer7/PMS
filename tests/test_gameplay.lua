@@ -64,26 +64,46 @@ return function(T, V)
   end)
 
   T:test("mount persistence ignores inactive and malformed records", function()
-    local value
+    local values = {}
     local persistence = Persistence.new({ save = {
       set = function(_, key, record)
-        T:eq(key, "mount_session_v1")
-        value = record
+        T:eq(key, "mount_state_v2")
+        values[key] = record
       end,
       get = function(_, key)
-        T:eq(key, "mount_session_v1")
-        return value
+        return values[key]
       end,
     } })
     T:ok(persistence:write({ dex = 6, mode = "flight", altitude = 0.7,
-      partySlot = 2 }, true))
+      partySlot = 2 }, true, {
+        ground = { dex = 59, partySlot = 1, partyFingerprint = "ground" },
+        flight = { dex = 6, partySlot = 2, partyFingerprint = "flight" },
+      }))
     local loaded = persistence:loadActive()
     T:eq(loaded.dex, 6)
     T:eq(loaded.mode, "flight")
     T:eq(loaded.altitude, 0.7)
     T:eq(loaded.partySlot, 2)
-    T:ok(persistence:write({}, false))
+    local selections = persistence:loadSelections()
+    T:eq(selections.ground.dex, 59)
+    T:eq(selections.flight.partyFingerprint, "flight")
+    T:ok(persistence:write({}, false, selections))
     T:eq(persistence:loadActive(), nil)
+    T:eq(persistence:loadSelections().ground.dex, 59)
+  end)
+
+  T:test("mount persistence reads the legacy active session once", function()
+    local persistence = Persistence.new({ save = {
+      get = function(_, key)
+        if key == "mount_session_v1" then
+          return { active = true, dex = 131, mode = "surf", partySlot = 3 }
+        end
+      end,
+    } })
+    local loaded = persistence:loadActive()
+    T:eq(loaded.dex, 131)
+    T:eq(loaded.mode, "surf")
+    T:eq(loaded.partySlot, 3)
   end)
 
   T:test("controllers preserve native collision while changing cadence", function()
@@ -98,12 +118,14 @@ return function(T, V)
       if key == "ground_speed" then return "fast" end
       if key == "flight_speed" then return "turbo" end
     end }
-    local ground = Ground.new(adapter, settings)
+    local Catalog = V.require("core/MountCatalog")
+    local catalog = Catalog.new(V.data("mounts"))
+    local ground = Ground.new(adapter, settings, catalog)
     T:ok(ground:start())
-    T:eq(ground:speed(16), 8)
-    local flight = Flight.new(adapter, settings)
+    T:eq(ground:speed(16, nil, { dex = 59 }), 9)
+    local flight = Flight.new(adapter, settings, nil, catalog)
     T:ok(flight:start())
-    T:eq(flight:speed(16), 5)
+    T:eq(flight:speed(16, nil, { dex = 6 }), 7)
     T:ok(flight:canLand())
   end)
 
@@ -125,18 +147,22 @@ return function(T, V)
         return fn()
       end,
     }
-    local controller = Surf.new(adapter, nil, progression)
+    local Catalog = V.require("core/MountCatalog")
+    local catalog = Catalog.new(V.data("mounts"))
+    local controller = Surf.new(adapter, nil, progression, nil, catalog)
     T:ok(controller:start({}, { species = "LAPRAS" }, {}, {}))
     T:ok(controller:update({}, 1 / 60))
-    T:eq(controller:speed(16), 12)
+    T:eq(controller:speed(16, nil, { dex = 131 }), 13)
   end)
 
-  T:test("flight collision crosses terrain but not entities or warps", function()
+  T:test("flight airspace crosses terrain entities and guarded warps", function()
     local symbol = "."
-    local status = { mode = "flight", state = "FLIGHT", altitude = 0.6 }
+    local suppressed
+    local status = { mode = "flight", state = "FLIGHT", altitude = 0.85 }
     local adapter = {
       isPlayerMover = function(_, mover) return mover == "player" end,
       tileSymbolAt = function() return symbol end,
+      suppressWarpAt = function(_, x, y) suppressed = { x = x, y = y } end,
     }
     local system = {
       snapshot = function() return status end,
@@ -147,14 +173,43 @@ return function(T, V)
       toX = 2, toY = 1 }
     T:eq(collision:resolve(false, ctx), true)
     ctx.reason = "entity"
-    T:eq(collision:resolve(false, ctx), false)
+    T:eq(collision:resolve(false, ctx), true)
     symbol = "+"
     ctx.reason = nil
-    T:eq(collision:resolve(true, ctx), false)
-    T:eq(ctx.reason, "pms_flight_warp")
+    T:eq(collision:resolve(true, ctx), true)
+    T:eq(suppressed.x, 2)
+    T:eq(suppressed.y, 1)
+    T:eq(ctx.reason, "pms_flight_airspace")
     symbol = "."
     status.state = "LANDING"
     ctx.reason = "tile"
     T:eq(collision:resolve(false, ctx), false)
+    status.state = "FLIGHT"
+    ctx.reason = "bounds"
+    T:eq(collision:resolve(false, ctx), false)
+  end)
+
+  T:test("ground collision starts reverse ledge hop exactly once", function()
+    local hops = 0
+    local records = {}
+    local adapter = {
+      isPlayerMover = function(_, mover) return mover == "player" end,
+      tryReverseLedge = function(_, direction)
+        T:eq(direction, "up")
+        hops = hops + 1
+        return true
+      end,
+    }
+    local system = {
+      snapshot = function() return { mode = "ground", state = "GROUND" } end,
+      recordCollision = function(_, value) records[#records + 1] = value end,
+    }
+    local collision = Collision.new(adapter, system)
+    local ctx = { mover = "player", dir = "up", reason = "tile",
+      fromX = 4, fromY = 4, toX = 4, toY = 3 }
+    T:eq(collision:resolve(false, ctx), false)
+    T:eq(hops, 1)
+    T:eq(ctx.reason, "pms_ground_reverse_ledge")
+    T:eq(records[#records].allowed, true)
   end)
 end

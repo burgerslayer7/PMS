@@ -28,6 +28,8 @@ function DebugHud:draw(game, viewport)
       tostring(status.mode or "-")),
     string.format("Provider %s  renderer=%s", tostring(status.provider or "-"),
       tostring(status.renderer or "-")),
+    string.format("Presentation %s", status.presentationPending
+      and ("RETRY " .. tostring(status.presentationAttempts or 0)) or "READY"),
     string.format("Altitude %.2f  Gen %d", tonumber(status.altitude) or 0,
       self.adapter:generation()),
     string.format("Map %s  tile=%s,%s (%s)", tostring(position.mapId or "-"),

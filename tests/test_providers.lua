@@ -86,6 +86,20 @@ return function(T, V)
     T:eq(finished, 1)
   end)
 
+  T:test("explicit invalidation revives a quarantined provider", function()
+    local registry = Registry.new()
+    local candidate = provider("recoverable", 1, "builtin2d",
+      function() return true end)
+    registry:register(candidate)
+    registry:recordFailure(candidate.id, "one")
+    registry:recordFailure(candidate.id, "two")
+    registry:recordFailure(candidate.id, "three")
+    T:eq(registry:isHealthy(candidate.id), false)
+    registry:invalidate(candidate.id)
+    T:eq(registry:isHealthy(candidate.id), true)
+    T:eq(registry.failures[candidate.id], 0)
+  end)
+
   T:test("an unavailable probe receipt is not selectable", function()
     local registry = Registry.new()
     local unavailable = provider("off", 1000, "voxel", function() return true end)
@@ -98,5 +112,48 @@ return function(T, V)
       activeRenderer = "voxel", preferredRenderer = "auto",
     }))
     T:eq(lease.provider.id, "safe")
+  end)
+
+  T:test("2D sprite source selects automatic Wilds or manual builtin", function()
+    local registry = Registry.new()
+    local wilds = provider("wilds_selected_2d", 250, "external2d",
+      function() return true end)
+    wilds.probe = function()
+      return { available = true, kind = "external2d", renderer = "native2d",
+        spriteSource = "wilds" }
+    end
+    local builtin = provider("builtin", -100, "builtin2d",
+      function() return true end)
+    builtin.probe = function()
+      return { available = true, kind = "builtin2d", renderer = "native2d" }
+    end
+    registry:register(wilds)
+    registry:register(builtin)
+    local resolver = Resolver.new(registry)
+    local auto = assert(resolver:acquire(6, "flight", {
+      activeRenderer = "native2d", spriteSource = "auto",
+    }))
+    T:eq(auto.provider.id, "wilds_selected_2d")
+    local manual = assert(resolver:acquire(6, "flight", {
+      activeRenderer = "native2d", spriteSource = "builtin",
+    }))
+    T:eq(manual.provider.id, "builtin")
+    local forcedWilds = assert(resolver:acquire(6, "flight", {
+      activeRenderer = "native2d", spriteSource = "wilds",
+    }))
+    T:eq(forcedWilds.provider.id, "wilds_selected_2d")
+
+    local voxel = provider("voxel", 500, "voxel", function() return true end)
+    registry:register(voxel)
+    local untouchedVoxel = assert(resolver:acquire(6, "flight", {
+      activeRenderer = "voxel", preferredRenderer = "auto",
+      spriteSource = "builtin",
+    }))
+    T:eq(untouchedVoxel.provider.id, "voxel")
+    local forcedNativeBuiltin = assert(resolver:acquire(6, "flight", {
+      activeRenderer = "voxel", preferredRenderer = "native2d",
+      spriteSource = "builtin",
+    }))
+    T:eq(forcedNativeBuiltin.provider.id, "builtin")
   end)
 end

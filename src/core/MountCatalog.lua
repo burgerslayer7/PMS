@@ -3,10 +3,25 @@ MountCatalog.__index = MountCatalog
 
 local VALID_MODES = { ground = true, surf = true, flight = true }
 
+local PROFILE_RANGES = {
+  speed = { 0.8, 2.0 }, acceleration = { 0.05, 0.5 },
+  braking = { 0.05, 0.8 }, launch = { 0.4, 1.0 },
+  turnRate = { 0.5, 1.0 }, boost = { 1.0, 2.0 },
+  verticalSpeed = { 0.2, 1.2 },
+}
+
 local function copyTable(value)
   local out = {}
   for key, item in pairs(value or {}) do
     out[key] = type(item) == "table" and copyTable(item) or item
+  end
+  return out
+end
+
+local function mergeTable(base, override)
+  local out = copyTable(base)
+  for key, value in pairs(override or {}) do
+    out[key] = type(value) == "table" and copyTable(value) or value
   end
   return out
 end
@@ -17,6 +32,8 @@ local function normalize(source, defaults)
     and source.dex >= 1 and source.dex <= 251, "invalid mount dex")
   assert(type(source.species) == "string" and source.species ~= "",
     "invalid mount species")
+  assert(type(source.heightM) == "number" and source.heightM > 0,
+    "invalid Pokédex height for " .. tostring(source.species))
   assert(type(source.modes) == "table", "mount modes must be a table")
 
   local modes, movement = {}, {}
@@ -24,13 +41,24 @@ local function normalize(source, defaults)
     assert(VALID_MODES[mode], "invalid mount mode: " .. tostring(mode))
     assert(not modes[mode], "duplicate mount mode: " .. tostring(mode))
     modes[mode] = true
-    movement[mode] = copyTable((source.movement or {})[mode]
-      or (defaults or {})[mode] or {})
+    movement[mode] = mergeTable((defaults or {})[mode],
+      (source.movement or {})[mode])
+    for key, range in pairs(PROFILE_RANGES) do
+      local raw = movement[mode][key]
+      if raw ~= nil then
+        local value = tonumber(raw)
+        assert(value and value >= range[1] and value <= range[2],
+          ("%s %s %s must be between %.2f and %.2f"):format(
+            source.species, mode, key, range[1], range[2]))
+        movement[mode][key] = value
+      end
+    end
   end
 
   return {
     dex = source.dex,
     species = source.species,
+    heightM = source.heightM,
     modes = modes,
     movement = movement,
     traits = copyTable(source.traits),
@@ -85,7 +113,12 @@ function MountCatalog:publicList(mode)
     for _, candidate in ipairs({ "ground", "surf", "flight" }) do
       if row.modes[candidate] then modes[#modes + 1] = candidate end
     end
-    out[#out + 1] = { dex = row.dex, species = row.species, modes = modes }
+    out[#out + 1] = {
+      dex = row.dex,
+      species = row.species,
+      heightM = row.heightM,
+      modes = modes,
+    }
   end
   return out
 end

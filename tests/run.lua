@@ -30,8 +30,12 @@ local suites = {
   "test_catalog",
   "test_providers",
   "test_builtin_provider",
+  "test_identity",
+  "test_policies",
   "test_mount_system",
   "test_gameplay",
+  "test_controls",
+  "test_ui",
   "test_integrations",
 }
 

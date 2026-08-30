@@ -1,6 +1,6 @@
 # Pokémon Mount System architecture
 
-Status: v0.1.0 implementation record
+Status: v0.2.0-beta.2 implementation record
 Audit date: 2026-08-28  
 Target runtime: Gen1Recomp++ Mod API v2, release 0.2.32 and later compatible
 0.x releases
@@ -63,9 +63,10 @@ flag, because that would incorrectly hide the stable game targets too.
 | Inter-mod | `mod.find(id).exports`, `mod.exports` | capability probes and explicit provider registration |
 | Teardown | unsubscribe callbacks returned by events/hooks | deterministic hot-reload cleanup and no duplicate hooks |
 
-PMS does not call `require("src....")` in its core, controllers or ordinary
-providers. Public calls are preferred even when a private shortcut would be
-shorter.
+PMS does not call `require("src....")` in its core or controllers. Public
+calls are preferred even when a private shortcut would be shorter; the two
+guarded engine-internal seams below are isolated behind the declared
+`engine_internals` permission.
 
 ### Public-API gap and isolated bridge
 
@@ -79,13 +80,17 @@ PMS therefore permits one narrow compatibility module, `ActorBridge`, to:
 
 1. synchronize the visual mount actor with the player's interpolated position;
 2. force deterministic under-player draw ordering at an equal world cell;
-3. restore/remove that actor on transitions and teardown.
+3. replace only that owned actor's renderer when a public external sprite
+   provider returns a dynamic sheet after content registries have frozen;
+4. restore/remove that actor on transitions and teardown.
 
 The bridge receives objects obtained through `mod.world`, performs guarded
-shape checks, never imports an engine module, and fails closed. If the expected
-shape is unavailable, PMS keeps gameplay active and uses the safe overlay or
-technical placeholder path. No controller may reference the live world/player
-shape directly. This seam is logged once and covered by adapter contract tests.
+shape checks and fails closed. Dynamic external sheets use one guarded
+`SpriteRenderer` constructor import; a failure falls through to the bundled
+provider. Gen1 airborne connections use one separate scoped `Map.defPassable`
+override around the engine's own connection transaction, restored immediately
+even on error. No controller may reference either engine shape directly.
+These seams are logged and covered by adapter contract tests.
 
 An upstream actor-handle addition for Gen2 would remove the bridge without
 changing MountSystem, controllers, catalogue or providers.
@@ -230,43 +235,58 @@ teleport the player each frame.
 ### GroundController
 
 - changes step duration through `movement.speed`;
+- accelerates while the Game Boy B input is held;
 - keeps native tile/entity/bounds collision;
 - mirrors the player pose to the render actor;
 - permits native seams and doors;
-- suspends or dismounts on interiors according to policy.
+- traverses an official low ledge in reverse only after validating the ledge
+  facing and its landing through the active generation's native rules.
+
+An environment allowlist and automatic indoor/dungeon dismount policy are not
+yet implemented; they are tracked in `docs/REMAINING.md`.
 
 ### SurfController
 
 - validates `surf` through `availableFieldActions`;
 - enters water through `useFieldAction("surf")` when progression is enabled;
 - retains native water/shore transition logic;
+- applies the held-B sprint cadence without replacing Surf collision;
 - replaces only the visible surf presentation and rider relation;
 - restores correctly after encounters and map changes.
 
-Suicune uses the same controller with an amphibious catalogue flag; it does
-not create a separate gameplay mode.
+Suicune has an amphibious catalogue flag and both Ground/Surf modes. Seamless
+land/water Ground Ride transitions are still pending and do not create a
+separate gameplay authority.
 
 ### FlightController
 
 - has logical continuous altitude `0.0 .. 1.0`;
 - uses explicit takeoff/landing ramps;
-- drives native directional steps and map seams;
+- accepts raw keyboard/controller altitude controls plus an eight-button
+  portable fallback;
+- maps altitude to native-2D visual lift and a ground-referenced shadow;
+- applies a held-B sprint cadence;
+- drives native directional steps and map seams, including a scoped Gen1
+  connection destination override while airborne;
 - uses a centralized flight collision policy instead of unconditional noclip;
+- suppresses native grass/water rolls and Wilds ground contacts while leaving
+  Wild Skies' direct aerial encounters active;
 - publishes a cooperative flight/altitude marker for ecosystem mods;
 - leaves first/third-person camera-relative input to the renderer that already
   owns that input mode, and never replaces a foreign camera.
 
-Altitude bands are derived, not separately stored:
+Altitude remains normalized, but the current native-2D product deliberately
+uses only high airspace once takeoff begins:
 
 | Normalized altitude | Band | Collision intent |
 | --- | --- | --- |
 | `0.00` | ground | landing validation and ordinary solids |
-| `0.01 .. 0.33` | low | terrain and configured overhead obstacles apply |
-| `0.34 .. 0.74` | medium | ordinary ground tiles may be crossed; hard world bounds remain |
-| `0.75 .. 1.00` | high | renderer may widen framing; unsafe boundaries/warps remain guarded |
+| `0.01 .. 0.77` | transition only | takeoff/landing animation, not stable player-selected flight |
+| `0.78 .. 1.00` | high | ground tiles, doors and entities are ignored; map bounds/seams remain native |
 
-If a voxel host provides roof/elevation queries, the collision resolver adds
-them as capabilities. Their absence does not disable flight.
+Roof/elevation collision capabilities are not part of Voxel Companion API v1.
+Their absence never lowers or disables Flight; PMS keeps the validated
+high-airspace behaviour instead of guessing at a renderer's private geometry.
 
 ### CollisionResolver
 
@@ -334,15 +354,15 @@ It does not expose the mutable MountSystem.
 ### Selection
 
 Resolver ranking is deterministic. Capability probes are cached by provider,
-generation and active renderer; species/mode acceptance is always evaluated
-per acquisition.
+generation, active renderer and sprite-source preference; species/mode
+acceptance is always evaluated per acquisition.
 
 Candidates are filtered by health and `resolve`, then ranked by renderer fit
 before numeric priority:
 
 1. external provider native to the active renderer;
 2. another compatible external 3D/voxel provider;
-3. compatible external 2D source;
+3. compatible external 2D source (Wilds-selected in Auto/forced Wilds mode);
 4. bundled PokéPC provider;
 5. technical placeholder/battle-art fallback.
 
@@ -366,15 +386,24 @@ not the id.
 
 Native 2D is mandatory and always registered. The builtin provider supplies a
 variable-size sprite definition. PMS spawns one passable visual actor at the
-player's cell and anchors it so the unmodified player sprite reads as the rider.
+player's cell and anchors it so the cropped player sprite reads as the rider.
 The actor is synchronized to the player's interpolated position and forced
 under the player in the y-sort. This preserves native player palettes, gender,
 animations and sprite-mod compatibility.
 
-Large mount sheets are nearest-neighbour scaled build artifacts of the bundled
-16x16 walker frames. The registry uses their real `frameWidth`, `frameHeight`,
-`anchorX` and `anchorY`; no global `love.graphics.scale` or camera transform is
-used.
+Each mount sheet is generated at an exact square frame size from its canonical
+Pokédex height: `20 * sqrt(height / 1.6)`, rounded and clamped to 16–40 pixels.
+The square-root curve preserves relative size while compressing serpentine body
+lengths. The registry uses the generated sheet's real `frameWidth`,
+`frameHeight`, `anchorX` and `anchorY`; no global `love.graphics.scale` or
+camera transform is used. The legacy 2×/3×/4× sheets remain packaged only as
+compatibility artifacts and are not selected by the builtin provider.
+
+The rider bridge wraps only the live rider sprite instance. It asks the engine
+renderer for its supported half-height crop, adjusts the seat anchor, and
+restores both draw function and anchors at dismount/hot reload. Flight applies
+the same altitude lift to rider and mount, while a mount-instance draw wrapper
+keeps the shadow at the original ground point.
 
 `RiderPose` resolves a profile using this specificity order:
 
@@ -384,7 +413,7 @@ used.
 4. mode + direction;
 5. safe centered default.
 
-A profile can adjust the mount anchor, visual bob, scale tier and player
+A profile can adjust the mount anchor, visual bob and player
 occlusion mask. Physics never reads rider profiles.
 
 ## 11. Bundled PokéPC fallback
@@ -437,36 +466,54 @@ whether voxel frames are actually active; it submits no draw command and no
 | Dramaless Shape | 2.0.3 | Gen1 default | `voxel_companion` v1 |
 | Dramatic Shape maintained fork | 1.9.0 | Gen1 default | ordinary runtime-actor billboard path |
 | Terrarium | 1.27.0-mobile | Gen1 default | ordinary runtime-actor billboard path |
-| PotatoVoxel | 1.9.4 | Gen1 + Gen2 | ordinary runtime-actor billboard path |
+| PotatoVoxel | 1.9.6 + PR #69 | Gen1 + Gen2 | dedicated engine-pipeline capability adapter |
 | Voxel Ascendant | 2.0.2 | Gen1 | ordinary runtime-actor billboard path |
 
-Only the first two currently expose the standard companion registration
-contract. A renderer can still display PMS through its normal variable-sprite
-billboard path even when no dedicated mount mesh API exists.
+Only the first two expose the standard companion registration contract.
+PotatoVoxel instead has a separate adapter which detects the engine-owned
+`voxel` pipeline level. It never imports `exports.lib` or another PotatoVoxel
+internal. PMS returns Flight lift from the mount actor's ordinary `pose()`;
+PotatoVoxel already converts that difference into real vertical placement.
+
+The same actor art resolver is used before the 2D/voxel provider split. Wilds
+True Size/PokeMMO sheets therefore remain selected in PotatoVoxel. Classic
+16x16 sheets receive a private nearest-neighbour presentation texture mapped
+to PMS' bundled Pokédex-sized geometry. This requires PotatoVoxel's variable
+frame-size patch from PR #69; public 1.9.6 predates that patch.
+
+The rider is also renderer-neutral. A temporary pose proxy shares mount
+altitude and exposes a palette-resolved texture with only the standing leg
+rows masked. Neither the player sprite definition nor the foreign renderer is
+mutated, and all proxies/canvases are released with the render lease.
 
 ## 13. Stadium providers
 
-The Gen1 Stadium Overworld Models release audited as 0.1.47 and requires a
-voxel host. The Gen2 Stadium 2 Overworld Models release audited as 0.4.33 and
-declares Gen2. Both obtain models from a user-imported ROM; PMS never bundles
-Nintendo model data.
+The Gen1 Stadium Overworld Models release audited as 0.1.47 requires a voxel
+host and obtains models from a user-imported ROM. PMS never bundles Nintendo
+model data.
 
-`StadiumProvider` feature-detects `tag`, `untag`, renderer status and declared
-dex coverage. It tags only PMS's active render actor and removes the tag when
-the lease ends. A rejected species falls through to the next provider. Stadium
-keeps responsibility for its model animation; PMS exposes mode and normalized
-altitude as actor metadata but does not patch Stadium's transforms. Gen2
-Stadium's separate fly/swim gameplay is never invoked by PMS.
+`StadiumProvider` feature-detects Gen1 `tag`, `untag`, renderer status and
+declared dex coverage. It tags only PMS's active render actor and removes the
+tag when the lease ends. A rejected species falls through to the next provider.
+Stadium remains maintenance-only. Gen2-3D-Sprites / Stadium 2 is outside the
+supported runtime and is never discovered or tagged.
 
 ## 14. Ecosystem integrations
 
 - **Wilds of Kanto 2.2.0 / Followers EX 1.0.19:** PMS changes no options or
   follower count. Render ownership hides only a matching follower entity from
-  the draw list while retaining its trail/update state.
+  the draw list while retaining its trail/update state. In native 2D, Wilds'
+  public `resolveFollowerSprite` can provide its currently selected art in 2D
+  and voxel; PMS polls the resolved identity at low frequency to follow
+  in-menu style changes.
 - **Wild Skies 1.12.0:** PMS publishes `isFlying`/`altitude` and stamps the
   cooperative `freeFlying` marker already read by Wild Skies. Wild Skies keeps
-  all flyer spawning and encounter authority.
-- **Crystal 251 0.11.6:** optional Gen1 dex/provider capability only.
+  all flyer spawning and airborne encounter authority; PMS vetoes only native
+  and Wilds ground-contact battle seams while airborne.
+- **Crystal 251 0.11.6:** optional Gen1 dataset capability only. PMS reads the
+  public `dexSize`, `revision` and `fingerprint` exports for diagnostics and
+  continues resolving injected party species through the merged public game
+  content. It does not consume Crystal 251's battle runtime exports.
 - **PokéPC runtime:** not required and not used as a runtime provider for the
   bundled fallback.
 
@@ -488,16 +535,20 @@ On true dismount or reload:
 3. release follower suppression and restore the same live entity;
 4. clear cached render context for the old map.
 
-Battle/map presentation leases may be recreated, but the session-level
-ownership lease remains active so a duplicate follower cannot flash for one
-frame. PMS never changes another mod's saved follower selection or count.
+Battle presentation keeps the session-level ownership lease. A map exit
+releases the lease tied to the departing live world, then map entry acquires a
+fresh lease before presentation resumes. This prevents stale follower
+references without changing another mod's saved selection or count.
 
 ## 16. Battle, map and save lifecycle
 
 ### Battle
 
 `battle.started` snapshots the stable mode, releases presentation and enters
-`BATTLE_SUSPENDED`. `battle.ended` restores once from that token. A battle
+`BATTLE_SUSPENDED`. `battle.ended` creates a bounded resume request and waits
+for the adapter's real free-roam state. Before restoring, `MountIdentity`
+resolves the exact party Pokémon and progression is checked again. A fainted,
+removed, evolved or newly ineligible mount is safely dismounted. A battle
 during takeoff or landing resumes as stable Flight rather than replaying a
 half-finished tween.
 
@@ -505,25 +556,32 @@ half-finished tween.
 
 `map.exited` releases map-bound actors before the old object pool disappears.
 `map.entered` increments the map revision and re-creates presentation only
-after the player is valid. `map.reloaded` and `checkpoint.restored` invalidate
-unsafe presentation or session state.
+after the player is valid. `map.reloaded` rebuilds the actor and ownership
+leases even without a preceding exit. A temporary unavailable map actor uses a
+bounded retry window; the invisible fallback keeps the full player sprite until
+the visible mount returns. `checkpoint.restored` invalidates unsafe session
+state.
 
 Ground follows native doors and seams. Surf follows the native Surf state.
-Flight keeps native hard bounds/entity collision, blocks door/warp cells while
-airborne and preserves its session across ordinary map transitions. A failed
-controller leaves the player visible and controllable.
+Flight ignores ground entities and blocks door/warp activation while airborne,
+but preserves native map-bound and connection transactions. The Gen1 adapter
+bypasses only connection destination ground passability for the duration of
+that transaction. A failed controller leaves the player visible and
+controllable.
 
 ### Save
 
-Persisted data is deliberately small:
+Persisted data uses `mount_state_v2` and remains deliberately small:
 
-- chosen species/party fingerprint;
-- preferred mode;
+- active species, stable party fingerprint and mode;
+- independent `lastGround`, `lastSurf` and `lastFlight` equivalents;
 - optional remount intent.
 
 Actor ids, provider leases and callbacks are not written. Normalized altitude
-is persisted with the remount intent. Load restores only after `game.ready`
-and a valid current map.
+is persisted with the remount intent. Level, HP and mutable battle stats are
+excluded from the identity fingerprint. Legacy `mount_session_v1` records are
+read once; the next write uses v2. Load restores only after `game.ready` and a
+valid current map.
 
 ## 17. Settings and diagnostics
 
@@ -532,6 +590,7 @@ Initial settings:
 - progression requirement;
 - auto-remount after battle;
 - preferred renderer (`auto` by default);
+- mount sprite source (`auto`, bundled or Wilds-selected);
 - ground/flight speed multipliers within safe bounds;
 - debug mode.
 
@@ -564,6 +623,12 @@ Headless tests currently cover:
 - save record validation;
 - manifest schema and Gen2 compatibility scan;
 - all 251 fallback PNGs, dimensions, frame count and dex mapping;
+- all 40 exact Pokédex-sized sheets and their pixel-equivalent
+  nearest-neighbour source mapping;
+- mount shortcut, sprint, rider crop, manual altitude and official reverse
+  ledge contracts;
+- airborne encounter authority, Gen1 scoped map connections, 42 explicit
+  per-mode speed profiles and Wilds-selected sprite switching;
 - package contents and root layout through `validate_package.py`.
 
 Runtime validation remains a vertical-slice matrix: Arcanine, Lapras,

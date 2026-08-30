@@ -23,11 +23,21 @@ def main() -> None:
         names = archive.namelist()
         if "manifest.json" not in names or "main.lua" not in names:
             fail("manifest.json and main.lua must be at archive root")
+        scope_path = "config/integration_scope.json"
+        if scope_path not in names:
+            fail("integration scope policy is missing")
         if any(name.startswith((".git/", "dist/")) for name in names):
             fail("archive contains development-only directories")
         manifest = json.loads(archive.read("manifest.json"))
         if manifest.get("id") != "pokemon_mount_system":
             fail("unexpected manifest id")
+        scope = json.loads(archive.read(scope_path))
+        stadium = scope.get("maintenance_only", {}).get("stadium", {})
+        open_sky = scope.get("excluded", {}).get("open_sky", {})
+        if stadium.get("feature_development") is not False:
+            fail("Stadium scope is not frozen")
+        if open_sky.get("status") != "abandoned":
+            fail("Open Sky exclusion is missing")
         sprites = {
             name
             for name in names

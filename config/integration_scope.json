@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "active_integration_order": [
+    "builtin_2d",
+    "wilds_of_kanto",
+    "wild_skies",
+    "pokepc_followers",
+    "followers_ex",
+    "battle_art",
+    "dramaless",
+    "potato_voxel",
+    "crystal_251",
+    "compatible_voxel_hosts"
+  ],
+  "maintenance_only": {
+    "stadium": {
+      "contract": "tag_untag",
+      "feature_development": false,
+      "allowed_work": [
+        "cleanup",
+        "fallback",
+        "regression_fixes"
+      ]
+    }
+  },
+  "excluded": {
+    "gen2_3d_sprites": {
+      "status": "unsupported",
+      "runtime_adapter": false,
+      "provider_tagging": false
+    },
+    "open_sky": {
+      "status": "abandoned",
+      "runtime_modules": false,
+      "assets": false
+    }
+  }
+}

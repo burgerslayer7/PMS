@@ -25,7 +25,7 @@ Antigravity and the other authors named by the upstream follower projects.
 These images remain subject to the rights and attribution requirements of
 their original authors and sources. They are not relicensed under the Wilds of
 Kanto MIT license, the PokéPC project, or Pokémon Mount System. No Pokémon ROM,
-Crystal 251 ROM content, Stadium model, or Stadium 2 model is bundled.
+Crystal 251 ROM content or Stadium model is bundled.
 
 Machine-readable provenance and the audited aggregate checksum are in
 `assets/fallback/pokepc/SOURCE.json`.
@@ -45,8 +45,6 @@ installed. They are not bundled and remain under their own terms:
 - Voxel Ascendant — <https://github.com/Roxas2712/voxel-ascendant>
 - Pokémon Stadium Overworld Models —
   <https://github.com/randyadr/3D-Pokemon-Sprites>
-- Pokémon Stadium 2 Overworld Models —
-  <https://github.com/randyadr/Gen2-3D-Sprites>
 - Wilds of Kanto —
   <https://github.com/YoDrehDenSwagAuf/overworld-spawn-mod>
 - Wild Skies — <https://github.com/shanehudson-gen1recomp-mods/wild_skies>

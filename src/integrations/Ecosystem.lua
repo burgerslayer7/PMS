@@ -1,10 +1,11 @@
 local Ecosystem = {}
 Ecosystem.__index = Ecosystem
 
-function Ecosystem.new(voxel, stadium, log)
+function Ecosystem.new(voxel, stadium, crystal251, log)
   return setmetatable({
     voxel = voxel,
     stadium = stadium,
+    crystal251 = crystal251,
     log = log,
     lastRenderer = nil,
     lastHost = nil,
@@ -14,11 +15,12 @@ end
 function Ecosystem:discover()
   if self.voxel then self.voxel:discover() end
   if self.stadium then self.stadium:discover() end
+  if self.crystal251 then self.crystal251:discover() end
   return true
 end
 
 function Ecosystem:update(system)
-  if self.voxel then self.voxel:advance() end
+  if self.voxel then self.voxel:advance(system) end
   local status = system and system:snapshot() or {}
   local generation = status.generation
   if not generation and system and system.runtime then
@@ -55,11 +57,13 @@ function Ecosystem:status()
     host = self.lastHost,
     voxel = self.voxel and self.voxel:status() or nil,
     stadium = self.stadium and self.stadium:status() or nil,
+    crystal251 = self.crystal251 and self.crystal251:status() or nil,
   }
 end
 
 function Ecosystem:cleanup()
   if self.voxel then self.voxel:cleanup() end
+  if self.crystal251 then self.crystal251:cleanup() end
   self.lastRenderer, self.lastHost = nil, nil
   return true
 end

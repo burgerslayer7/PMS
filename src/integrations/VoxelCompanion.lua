@@ -36,6 +36,16 @@ function VoxelCompanion:_observe(id, context)
   local frame = context and context.frame
   record.cameraMode = type(camera) == "table" and camera.mode
     or (type(frame) == "table" and frame.mode) or record.cameraMode
+  if type(camera) == "table" and type(camera.eye) == "table"
+      and type(camera.focus) == "table" then
+    local ex, ez = tonumber(camera.eye[1] or camera.eye.x),
+      tonumber(camera.eye[3] or camera.eye.z)
+    local fx, fz = tonumber(camera.focus[1] or camera.focus.x),
+      tonumber(camera.focus[3] or camera.focus.z)
+    if ex and ez and fx and fz and (fx ~= ex or fz ~= ez) then
+      record.cameraYaw = math.atan2(fx - ex, fz - ez)
+    end
+  end
 end
 
 function VoxelCompanion:_register(id, handle)
@@ -62,7 +72,7 @@ function VoxelCompanion:_register(id, handle)
     api = 1,
     id = "pokemon-mount-system.renderer-observer",
     name = "Pokemon Mount System renderer observer",
-    version = "0.1.0",
+    version = tostring(self.mod and self.mod.version or "0.2.0-beta.2"),
     priority = 900,
     phases = {
       background = function(context)
@@ -124,6 +134,13 @@ function VoxelCompanion:activeHost()
   return selected
 end
 
+function VoxelCompanion:movementOrientation()
+  local active = self:activeHost()
+  if not active or type(active.cameraYaw) ~= "number" then return nil end
+  return { kind = "camera", yaw = active.cameraYaw, host = active.id,
+    cameraMode = active.cameraMode }
+end
+
 function VoxelCompanion:status()
   local active = self:activeHost()
   local installed = {}
@@ -133,6 +150,7 @@ function VoxelCompanion:status()
       version = record.version,
       active = record == active,
       cameraMode = record.cameraMode,
+      cameraYaw = record.cameraYaw,
     }
   end
   table.sort(installed, function(a, b) return a.id < b.id end)

@@ -14,9 +14,32 @@ jobs:
       - name: Run unit and asset gates
         run: LUA_BIN=lua5.1 tools/test.sh
 
+  engine-and-potato:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: bryanthaboi/gen1recomp
+          path: engine
+      - uses: actions/checkout@v4
+        with:
+          repository: ShaneMcGovernIE/potato_voxel
+          ref: a4675f9017c78a3a00bbefe389f1bc33ec4c1394
+          path: potato
+      - name: Install engine test dependency
+        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Load PMS on both generations
+        run: GEN1RECOMP_ROOT="$GITHUB_WORKSPACE/engine" LUA_BIN=luajit tools/test_engine.sh
+      - name: Load PMS with PotatoVoxel on both generations
+        run: >-
+          GEN1RECOMP_ROOT="$GITHUB_WORKSPACE/engine"
+          POTATO_VOXEL_ROOT="$GITHUB_WORKSPACE/potato"
+          LUA_BIN=luajit tools/test_potato.sh
+
   package:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, engine-and-potato]
     steps:
       - uses: actions/checkout@v4
       - name: Build launcher archive

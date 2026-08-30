@@ -5,9 +5,10 @@
 local StadiumProvider = {}
 StadiumProvider.__index = StadiumProvider
 
+-- Gen2-3D-Sprites / Stadium 2 is intentionally outside the supported
+-- runtime. PMS no longer probes, tags or adapts itself to that mod.
 local IDS = {
   [1] = { "STADIUM_OVERWORLD_MODELS" },
-  [2] = { "STADIUM2_OVERWORLD_MODELS" },
 }
 
 local function find(mod, id)
@@ -59,11 +60,13 @@ function StadiumProvider:discover()
 end
 
 function StadiumProvider:_handle(generation)
+  if generation ~= 1 then return nil end
   if not self.scanned[generation] then self:discover() end
   return self.handles[generation]
 end
 
 function StadiumProvider:world3DState(generation)
+  if generation ~= 1 then return false end
   local handle = self:_handle(generation)
   local exports = handle and handle.exports
   if not exports or exports.rendererInstalled ~= true then return false end
@@ -83,6 +86,9 @@ function StadiumProvider:contract()
     priority = 800,
     probe = function(_, context)
       local generation = context and context.generation or 1
+      if generation ~= 1 then
+        return nil, "Gen2-3D-Sprites is outside the supported runtime"
+      end
       local handle = owner:_handle(generation)
       local exports = handle and handle.exports
       if not exports or exports.rendererInstalled ~= true then
@@ -106,10 +112,13 @@ function StadiumProvider:contract()
     end,
     resolve = function(_, dex, mode, context)
       local generation = context and context.generation or 1
+      if generation ~= 1 then
+        return nil, "Gen2-3D-Sprites is outside the supported runtime"
+      end
       local handle = owner:_handle(generation)
       local exports = handle and handle.exports
       local maxDex = exports and (tonumber(exports.maxDex)
-        or (generation == 1 and 151 or 251)) or 0
+        or 151) or 0
       local mount = owner.catalog:get(dex)
       if not mount or not mount.modes[mode] then
         return nil, "unsupported mount mode"
